@@ -37,7 +37,12 @@ class EventParser:
             StreamingEvent objects parsed from the stream
         """
         async for chunk in stream:
-            self.buffer += chunk
+            # Upstream SSE may use CRLF (\r\n\r\n). Normalize to LF so the parser can
+            # reliably detect message boundaries using "\n\n".
+            #
+            # Note: We also replace any remaining lone "\r" to handle chunk splits
+            # where "\r\n" may be divided across yields.
+            self.buffer += chunk.replace("\r\n", "\n").replace("\r", "\n")
 
             async for event in self._process_buffer():
                 logger.debug(f"Parsed event:\n{event.model_dump()}")
@@ -65,6 +70,7 @@ class EventParser:
         sse_msg = SSEMessage()
 
         for line in message_text.split("\n"):
+            line = line.rstrip("\r")
             if not line:
                 continue
 
