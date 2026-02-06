@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -21,10 +21,12 @@ class Attachment(BaseModel):
 
 
 class ClaudeWebTool(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="ignore")
 
     name: str
-    type: str
+    input_schema: Any | None = None
+    description: Optional[str] = None
+    type: Optional[str] = None
 
     @classmethod
     def web_search(cls) -> "ClaudeWebTool":

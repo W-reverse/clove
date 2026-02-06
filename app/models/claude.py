@@ -1,5 +1,5 @@
 from typing import Optional, List, Union, Literal, Dict, Any
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from enum import Enum
 
 
@@ -85,6 +85,15 @@ class ToolResultContent(BaseModel):
     is_error: Optional[bool] = False
     cache_control: Optional[CacheControl] = None
 
+    @field_validator("content", mode="before")
+    @classmethod
+    def _coerce_single_content_block_to_list(cls, value):
+        # Be permissive: some clients send a single content block object instead
+        # of an array for tool_result content.
+        if isinstance(value, dict):
+            return [value]
+        return value
+
 
 class ServerToolUseContent(BaseModel):
     model_config = ConfigDict(extra="allow")
@@ -118,6 +127,16 @@ class InputMessage(BaseModel):
     model_config = ConfigDict(extra="allow")
     role: Role
     content: Union[str, List[ContentBlock]]
+
+    @field_validator("content", mode="before")
+    @classmethod
+    def _coerce_single_block_to_list(cls, value):
+        # Some clients (e.g. certain MCP/tool integrations) may send a single
+        # content block object instead of a list of blocks. Normalize to the
+        # official list form for internal consistency.
+        if isinstance(value, dict):
+            return [value]
+        return value
 
 
 class ThinkingOptions(BaseModel):

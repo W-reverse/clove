@@ -184,6 +184,13 @@ class ClaudeWebClient:
 
     async def send_message(self, payload: Dict[str, Any], conv_uuid: str) -> Response:
         """Send a message and return the response."""
+        if "tool_choice" in payload:
+            # Claude.ai web completion endpoint does not accept tool_choice.
+            # We emulate tool_choice behavior earlier (e.g. by filtering tools).
+            logger.debug("Dropping unsupported tool_choice from Claude.ai web payload")
+            payload = dict(payload)
+            payload.pop("tool_choice", None)
+
         url = urljoin(
             self.endpoint,
             f"/api/organizations/{self.account.organization_uuid}/chat_conversations/{conv_uuid}/completion",

@@ -183,8 +183,10 @@ class ClaudeAPIProcessor(BaseProcessor):
                         checkpoints, account.organization_uuid
                     )
 
-        except (NoAccountsAvailableError, InvalidModelNameError):
-            logger.debug("No accounts available for Claude API, continuing pipeline")
+        except (NoAccountsAvailableError, InvalidModelNameError) as e:
+            logger.info(
+                f"Claude API unavailable ({e.__class__.__name__}); falling back to Claude.ai web mode"
+            )
 
         return context
 

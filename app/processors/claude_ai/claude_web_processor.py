@@ -61,9 +61,22 @@ class ClaudeWebProcessor(BaseProcessor):
             if not request.messages:
                 raise NoValidMessagesError()
 
-            merged_text, images = await process_messages(
-                request.messages, request.system
+            system_prompt = ""
+            if isinstance(request.system, str):
+                system_prompt = request.system
+            elif request.system:
+                system_prompt = "\n".join(item.text for item in request.system)
+
+            prompt_parts = []
+            if settings.custom_prompt:
+                prompt_parts.append(settings.custom_prompt)
+            if system_prompt.strip():
+                prompt_parts.append(system_prompt)
+            merged_prompt = "\n\n".join(
+                part.strip() for part in prompt_parts if part and part.strip()
             )
+
+            merged_text, images = await process_messages(request.messages)
             if not merged_text:
                 raise NoValidMessagesError()
 
@@ -117,8 +130,43 @@ class ClaudeWebProcessor(BaseProcessor):
                 for tool in (request.tools or [])
             )
             web_tools: List[ClaudeWebTool] = []
+
+            for tool in request.tools or []:
+                web_tools.append(
+                    ClaudeWebTool(
+                        name=tool.name,
+                        type=tool.type,
+                        description=tool.description,
+                        input_schema=tool.input_schema,
+                    )
+                )
+
             if settings.web_search or requested_web_search:
-                web_tools.append(ClaudeWebTool.web_search())
+                if not any(tool.name == "web_search" for tool in web_tools):
+                    web_tools.append(ClaudeWebTool.web_search())
+
+            # Claude.ai web endpoint rejects `tool_choice`, but many clients send it.
+            # Best-effort emulate tool_choice by filtering tool list.
+            if request.tool_choice:
+                if request.tool_choice.type == "none":
+                    web_tools = []
+                elif request.tool_choice.type == "tool" and request.tool_choice.name:
+                    selected_name = request.tool_choice.name
+                    filtered = [tool for tool in web_tools if tool.name == selected_name]
+                    if filtered:
+                        web_tools = filtered
+                        logger.debug(
+                            f"Emulating tool_choice by selecting tool: {selected_name}"
+                        )
+                    else:
+                        logger.warning(
+                            "tool_choice requested tool '{}' but it was not found in tools={}",
+                            selected_name,
+                            [tool.name for tool in web_tools],
+                        )
+
+            if web_tools:
+                logger.debug(f"Claude.ai web tools: {[tool.name for tool in web_tools]}")
 
             web_request = ClaudeWebRequest(
                 max_tokens_to_sample=request.max_tokens,
@@ -126,7 +174,7 @@ class ClaudeWebProcessor(BaseProcessor):
                 files=image_file_ids,
                 model=request.model,
                 rendering_mode="messages",
-                prompt=settings.custom_prompt or "",
+                prompt=merged_prompt,
                 timezone="UTC",
                 tools=web_tools,
             )
