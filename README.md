@@ -24,7 +24,9 @@
 
 2、新增通过thinking:{"type":"enabled"}控制思考模式的开关
 
-3、sessionkey的格式不再仅局限于sid01
+3、新增联网搜索功能，在对话中通过强调让claude搜索，可以自动调用web端的联网搜索功能
+
+4、sessionkey的格式不再仅局限于sid01
 
 以下是原项目的介绍
 
