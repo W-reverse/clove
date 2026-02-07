@@ -17,6 +17,44 @@ from app.utils.messages import process_messages
 class ClaudeWebProcessor(BaseProcessor):
     """Claude AI processor that handles session management, request building, and sending to Claude AI."""
 
+    def _is_web_search_tool(self, tool) -> bool:
+        tool_name = (getattr(tool, "name", None) or "").strip().lower()
+        tool_type = (getattr(tool, "type", None) or "").strip().lower()
+        return tool_name == "web_search" or tool_type.startswith("web_search")
+
+    def _build_web_tools(self, request_tools) -> List[ClaudeWebTool]:
+        web_tools: List[ClaudeWebTool] = []
+        has_web_search = False
+
+        for tool in request_tools or []:
+            if self._is_web_search_tool(tool):
+                if not has_web_search:
+                    web_tools.append(ClaudeWebTool.web_search())
+                    has_web_search = True
+                continue
+
+            tool_type = (getattr(tool, "type", None) or "").strip()
+            # Claude.ai web completion endpoint accepts custom tools (with input_schema)
+            # and built-in web_search, but rejects many typed built-in API tools.
+            if tool_type and getattr(tool, "input_schema", None) is None:
+                logger.warning(
+                    "Dropping unsupported Claude.ai web tool: name='{}', type='{}'",
+                    tool.name,
+                    tool_type,
+                )
+                continue
+
+            web_tools.append(
+                ClaudeWebTool(
+                    name=tool.name,
+                    type=tool.type,
+                    description=tool.description,
+                    input_schema=tool.input_schema,
+                )
+            )
+
+        return web_tools
+
     async def process(self, context: ClaudeAIContext) -> ClaudeAIContext:
         """
         Claude AI processor that:
@@ -123,23 +161,13 @@ class ClaudeWebProcessor(BaseProcessor):
                 )
 
             requested_web_search = any(
-                (
-                    tool.name == "web_search"
-                    or (getattr(tool, "type", None) or "").startswith("web_search")
-                )
-                for tool in (request.tools or [])
+                self._is_web_search_tool(tool) for tool in (request.tools or [])
+            ) or (
+                request.tool_choice
+                and request.tool_choice.type == "tool"
+                and (request.tool_choice.name or "").strip().lower() == "web_search"
             )
-            web_tools: List[ClaudeWebTool] = []
-
-            for tool in request.tools or []:
-                web_tools.append(
-                    ClaudeWebTool(
-                        name=tool.name,
-                        type=tool.type,
-                        description=tool.description,
-                        input_schema=tool.input_schema,
-                    )
-                )
+            web_tools = self._build_web_tools(request.tools)
 
             if settings.web_search or requested_web_search:
                 if not any(tool.name == "web_search" for tool in web_tools):

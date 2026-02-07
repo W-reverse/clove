@@ -64,6 +64,12 @@ class ClaudeAPIProcessor(BaseProcessor):
             )
             return context
 
+        if self._should_route_to_claude_web(context):
+            logger.info(
+                "Routing request to Claude.ai web mode to preserve web_search behavior"
+            )
+            return context
+
         self._insert_system_message(context)
 
         try:
@@ -189,6 +195,31 @@ class ClaudeAPIProcessor(BaseProcessor):
             )
 
         return context
+
+    def _is_web_search_tool(self, tool) -> bool:
+        tool_name = (getattr(tool, "name", None) or "").strip().lower()
+        tool_type = (getattr(tool, "type", None) or "").strip().lower()
+        return tool_name == "web_search" or tool_type.startswith("web_search")
+
+    def _should_route_to_claude_web(self, context: ClaudeAIContext) -> bool:
+        request = context.messages_api_request
+        if not request:
+            return False
+
+        if settings.web_search:
+            return True
+
+        if any(self._is_web_search_tool(tool) for tool in (request.tools or [])):
+            return True
+
+        if (
+            request.tool_choice
+            and request.tool_choice.type == "tool"
+            and (request.tool_choice.name or "").strip().lower() == "web_search"
+        ):
+            return True
+
+        return False
 
     def _insert_system_message(self, context: ClaudeAIContext) -> None:
         """Insert system message into the request."""

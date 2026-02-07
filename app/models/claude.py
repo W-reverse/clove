@@ -81,13 +81,15 @@ class ToolResultContent(BaseModel):
     model_config = ConfigDict(extra="allow")
     type: Literal["tool_result"]
     tool_use_id: str
-    content: str | List[TextContent | ImageContent]
+    content: str | List[TextContent | ImageContent] = ""
     is_error: Optional[bool] = False
     cache_control: Optional[CacheControl] = None
 
     @field_validator("content", mode="before")
     @classmethod
     def _coerce_single_content_block_to_list(cls, value):
+        if value is None:
+            return ""
         # Be permissive: some clients send a single content block object instead
         # of an array for tool_result content.
         if isinstance(value, dict):

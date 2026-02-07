@@ -18,6 +18,10 @@ from app.services.tool_call import tool_call_manager
 class ToolCallEventProcessor(BaseProcessor):
     """Processor that handles tool use events in the streaming response."""
 
+    def _is_server_managed_tool(self, tool_name: str) -> bool:
+        name = (tool_name or "").strip().lower()
+        return name == "web_search"
+
     async def process(self, context: ClaudeAIContext) -> ClaudeAIContext:
         """
         Intercept tool use content blocks and inject MessageDelta/MessageStop events.
@@ -65,6 +69,19 @@ class ToolCallEventProcessor(BaseProcessor):
             # Check for ContentBlockStartEvent with tool_use type
             if isinstance(event.root, ContentBlockStartEvent):
                 if isinstance(event.root.content_block, ToolUseContent):
+                    tool_name = (event.root.content_block.name or "").strip()
+                    if self._is_server_managed_tool(tool_name):
+                        logger.debug(
+                            "Detected server-managed tool_use '{}', pass-through without pausing",
+                            tool_name,
+                        )
+                        # Claude.ai handles this tool internally. Do not pause stream
+                        # or require client-side tool_result round-trip.
+                        current_tool_use_id = None
+                        tool_use_detected = False
+                        content_block_index = None
+                        continue
+
                     current_tool_use_id = event.root.content_block.id
                     content_block_index = event.root.index
                     tool_use_detected = True
